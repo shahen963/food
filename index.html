@@ -435,10 +435,14 @@
             showToast('⛔ محظور مؤقتاً. انتظر ' + secs + ' ثانية');
             return;
         }
-        const email = document.getElementById('login-email').value.trim();
+        const email = document.getElementById('login-email').value.trim().toLowerCase();
         const code  = document.getElementById('login-code').value.trim();
         if (!email || !code) { showToast('يرجى إدخال البريد والكود ❌'); return; }
-        const { data } = await _sb.from('restaurants').select('*').eq('email', email).eq('access_code', code).single();
+        // [FIX] البحث بالإيميل فقط أولاً ثم مقارنة الكود يدوياً لتفادي حساسية الحروف
+        const { data: rowData, error: rowError } = await _sb.from('restaurants').select('*').ilike('email', email).maybeSingle();
+        console.log('[LOGIN] email:', email, '| rowData:', rowData, '| rowError:', rowError);
+        const data = rowData && (String(rowData.access_code).trim() === String(code).trim()) ? rowData : null;
+        console.log('[LOGIN] code match:', !!data);
         if (data) {
             _loginAttempts = 0; // إعادة العداد عند النجاح
             currentRes = data;
