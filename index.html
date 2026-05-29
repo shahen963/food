@@ -449,7 +449,7 @@
             // ===== توليد اسم مستخدم تلقائي إذا لم يكن موجوداً =====
             if (!currentRes.auto_username) {
                 const autoUser = generateAutoUsername('RES');
-                await _sb.from('restaurants').update({ auto_username: autoUser }).eq('id', currentRes.id).catch(() => {});
+                try { await _sb.from('restaurants').update({ auto_username: autoUser }).eq('id', currentRes.id); } catch(e) {}
                 currentRes.auto_username = autoUser;
             }
             // ===== نهاية توليد اسم المستخدم =====
