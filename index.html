@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- [SEC-PATCH-19] رؤوس أمان إضافية -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta name="referrer" content="no-referrer">
     <title>بوابة المطعم | شاهين إكسبريس 🦅</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -427,7 +430,8 @@
 
     // ===== تسجيل الدخول =====
     // [SEC-FIX-2] Brute Force: حماية تسجيل الدخول من المحاولات المتعددة
-    let _loginAttempts = 0, _loginLockUntil = 0;
+    // [SEC-PATCH-11] استمرارية القفل عبر إعادة التحميل باستخدام sessionStorage
+    let _loginAttempts = parseInt(sessionStorage.getItem('_res_attempts') || '0'), _loginLockUntil = parseInt(sessionStorage.getItem('_res_lock_until') || '0');
     async function checkAuth() {
         const now = Date.now();
         if (now < _loginLockUntil) {
@@ -440,11 +444,12 @@
         if (!email || !code) { showToast('يرجى إدخال البريد والكود ❌'); return; }
         // [FIX] البحث بالإيميل فقط أولاً ثم مقارنة الكود يدوياً لتفادي حساسية الحروف
         const { data: rowData, error: rowError } = await _sb.from('restaurants').select('*').ilike('email', email).maybeSingle();
-        console.log('[LOGIN] email:', email, '| rowData:', rowData, '| rowError:', rowError);
+        // [SEC-PATCH-21] إزالة console.log الذي كان يطبع الإيميل وبيانات الدخول في بيئة الإنتاج
         const data = rowData && (String(rowData.access_code).trim() === String(code).trim()) ? rowData : null;
-        console.log('[LOGIN] code match:', !!data);
         if (data) {
             _loginAttempts = 0; // إعادة العداد عند النجاح
+            sessionStorage.removeItem('_res_attempts');
+            sessionStorage.removeItem('_res_lock_until');
             currentRes = data;
             // ===== توليد اسم مستخدم تلقائي إذا لم يكن موجوداً =====
             if (!currentRes.auto_username) {
@@ -453,17 +458,38 @@
                 currentRes.auto_username = autoUser;
             }
             // ===== نهاية توليد اسم المستخدم =====
-            localStorage.setItem('sh_store_session', JSON.stringify(data));
+            // [SEC-PATCH-27] إضافة timestamp للجلسة للتحقق من الصلاحية (24 ساعة)
+            const _sessionData39 = Object.assign({}, data, { _ts: Date.now() });
+            localStorage.setItem('sh_store_session', JSON.stringify(_sessionData39));
             startApp();
         } else {
-            _loginAttempts++; if (_loginAttempts >= 5) { _loginLockUntil = Date.now() + 60000; _loginAttempts = 0; } showToast('بيانات الدخول غير صحيحة ❌');
+            _loginAttempts++;
+            sessionStorage.setItem('_res_attempts', _loginAttempts);
+            if (_loginAttempts >= 5) {
+                _loginLockUntil = Date.now() + 60000;
+                sessionStorage.setItem('_res_lock_until', _loginLockUntil);
+                _loginAttempts = 0;
+                sessionStorage.setItem('_res_attempts', '0');
+            }
+            showToast('بيانات الدخول غير صحيحة ❌');
         }
     }
 
     // ===== بدء التطبيق =====
     function startApp() {
         const s = localStorage.getItem('sh_store_session');
-        if (s) currentRes = JSON.parse(s);
+        // [SEC-PATCH-27] التحقق من صحة الجلسة وانتهاء صلاحيتها (24 ساعة)
+        if (s) {
+            try {
+                const _parsed = JSON.parse(s);
+                const _SESSION_TTL = 24 * 60 * 60 * 1000;
+                if (_parsed._ts && (Date.now() - _parsed._ts) > _SESSION_TTL) {
+                    localStorage.removeItem('sh_store_session');
+                    return;
+                }
+                currentRes = _parsed;
+            } catch(e) { localStorage.removeItem('sh_store_session'); return; }
+        }
         if (!currentRes) return;
         document.getElementById('auth-screen').style.display = 'none';
         document.getElementById('main-content').style.display = 'block';
@@ -480,7 +506,9 @@
         loadHistory();
         renderMenuSections();
         // تحديث دوري كل 5 ثواني
-        setInterval(() => {
+        // [FIX-INTERVAL-39] منع تكديس المؤقتات عند إعادة استدعاء startApp
+        if (window._mainRefreshInterval39) clearInterval(window._mainRefreshInterval39);
+        window._mainRefreshInterval39 = setInterval(() => {
             refreshTimer += 5;
             document.getElementById('sync-bar').style.width = (refreshTimer % 100) + '%';
             if (refreshTimer % 100 === 0) { loadOrders(); loadHistory(); }
@@ -815,7 +843,7 @@
         container.innerHTML = chatOrders.map(o => `
         <div class="chat-list-item" onclick="openChatScreen('${o.id}','${escHtml((o.customer_name||'').replace(/'/g,''))}')">
             <div>
-                <div class="cli-name">${o.customer_name || 'عميل شاهين'}</div>
+                <div class="cli-name">${escHtml(o.customer_name) || 'عميل شاهين'}</div>
                 <div class="cli-sub">#${String(o.id).slice(-6)} · ${new Date(o.created_at).toLocaleTimeString('ar-SY',{hour:'2-digit',minute:'2-digit'})}</div>
             </div>
             <span class="cli-badge">${o.status === 'consulting' ? '💬 نشط' : '🔔 جديد'}</span>
@@ -975,9 +1003,9 @@
         }
         cont.innerHTML = historyOrders.map(o => `
         <div class="arch-item">
-            <div class="ai-name">${o.customer_name || '---'}</div>
-            <div style="font-size:11px;opacity:0.5;">#${o.id} · ${new Date(o.created_at).toLocaleString('ar-SY')}</div>
-            ${o.order_details ? `<div class="ai-detail">${o.order_details}</div>` : ''}
+            <div class="ai-name">${escHtml(o.customer_name) || '---'}</div>
+            <div style="font-size:11px;opacity:0.5;">#${escHtml(String(o.id))} · ${new Date(o.created_at).toLocaleString('ar-SY')}</div>
+            ${o.order_details ? `<div class="ai-detail">${escHtml(o.order_details)}</div>` : ''}
             ${(o.total||o.order_price) ? `<div style="font-size:12px;color:var(--gold);margin-top:5px;">💰 ${(Number(o.total||0)||Number(o.order_price||0)).toLocaleString()} ل.س</div>` : ''}
         </div>`).join('');
     }
@@ -1152,6 +1180,9 @@
     }
 
     function logout() {
+        // [FIX-LOGOUT-39] إيقاف المؤقت عند تسجيل الخروج
+        if (window._mainRefreshInterval39) { clearInterval(window._mainRefreshInterval39); window._mainRefreshInterval39 = null; }
+        if (_msgPollInterval) { clearInterval(_msgPollInterval); _msgPollInterval = null; }
         localStorage.removeItem('sh_store_session');
         location.reload();
     }
