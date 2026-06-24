@@ -1,1196 +1,375 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <!-- [SEC-PATCH-19] رؤوس أمان إضافية -->
-    <meta http-equiv="X-Content-Type-Options" content="nosniff">
-    <meta name="referrer" content="no-referrer">
-    <title>بوابة المطعم | شاهين إكسبريس 🦅</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <style>
-        :root {
-            --gold: #d4af37; --gold-l: #f1d279;
-            --p-dark: #0a010a; --p-main: #1d051d;
-            --glass: rgba(255,255,255,0.05);
-            --success: #27ae60; --danger: #e74c3c; --info: #3498db;
-        }
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; transition: background 0.2s; }
-        body { margin: 0; background: radial-gradient(circle, var(--p-main), var(--p-dark)); color: #fff; font-family: -apple-system, sans-serif; min-height: 100vh; overflow-x: hidden; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>شاهين إكسبريس | لوحة تتبع المناديب 🦅</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{ --gold:#d4af37; --purple:#1a051a; --card:#241026; --green:#2ecc71; --orange:#e67e22; --red:#e74c3c; }
+  *{box-sizing:border-box;}
+  html, body{margin:0; font-family:'Segoe UI', Tahoma, sans-serif; background:var(--purple); color:#fff;
+    width:100%; height:100%; overflow:hidden; display:flex; flex-direction:column;}
+  #topbar{
+    flex:0 0 auto; display:flex; align-items:center; gap:14px; padding:8px 16px; flex-wrap:wrap;
+    background:linear-gradient(90deg,#2b0a2b,#3a0f1a); border-bottom:2px solid var(--gold);
+  }
+  #topbar h1{ font-size:14px; color:var(--gold); margin:0; flex:0 0 auto; }
+  #conn-status{ font-size:11px; padding:4px 10px; border-radius:20px; white-space:nowrap; }
+  .conn-ok{ background:rgba(46,204,113,0.15); color:var(--green); border:1px solid var(--green); }
+  .conn-bad{ background:rgba(231,76,60,0.15); color:var(--red); border:1px solid var(--red); }
+  #stats-bar{ display:flex; gap:8px; margin-right:auto; font-size:11px; flex-wrap:wrap; }
+  .stat-chip{ background:rgba(212,175,55,0.1); border:1px solid rgba(212,175,55,0.3); padding:3px 9px; border-radius:20px; white-space:nowrap; }
+  #refresh-btn{ background:var(--gold); color:#1a051a; border:none; padding:6px 14px; border-radius:20px; font-weight:bold; cursor:pointer; font-size:12px; white-space:nowrap; }
+  #refresh-btn:active{ transform:scale(0.96); }
 
-        /* ===== شاشة الدخول ===== */
-        .auth-overlay { position: fixed; inset: 0; background: var(--p-dark); z-index: 9000; display: flex; align-items: center; justify-content: center; padding: 20px; }
-        .auth-card { background: rgba(255,255,255,0.04); backdrop-filter: blur(10px); padding: 35px; border-radius: 24px; border: 1px solid var(--gold); width: 100%; max-width: 380px; text-align: center; }
-        .auth-card img { width: 75px; border-radius: 18px; margin-bottom: 15px; border: 2px solid var(--gold); }
-        .inp { width: 100%; padding: 14px; margin-bottom: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; color: #fff; text-align: center; outline: none; font-size: 14px; }
-        .inp:focus { border-color: var(--gold); }
-        .btn-login { width: 100%; padding: 14px; background: var(--gold); border: none; border-radius: 12px; font-weight: bold; cursor: pointer; font-size: 15px; }
+  #layout{ flex:1 1 auto; display:flex; min-height:0; overflow:hidden; }
+  #map{ flex:1 1 auto; min-width:0; min-height:0; }
+  #side{ width:340px; flex:0 0 340px; background:var(--card); border-right:1px solid rgba(212,175,55,0.25);
+    overflow-y:auto; display:flex; flex-direction:column; min-height:0; }
 
-        /* ===== هيدر ===== */
-        .app-header { padding: 12px 18px; background: rgba(0,0,0,0.5); backdrop-filter: blur(8px); display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(212,175,55,0.25); position: sticky; top: 0; z-index: 100; }
-        .header-info .res-name { font-weight: bold; color: var(--gold); font-size: 16px; }
-        .header-info .res-sub  { font-size: 11px; opacity: 0.65; margin-top: 2px; }
-        .header-btns { display: flex; gap: 8px; align-items: center; }
-        .hbtn { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); color: #fff; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; }
-        .hbtn:active { background: var(--gold); color: #000; }
+  /* شاشات الموبايل: الخريطة فوق، القائمة تحتها بدل عمود ثابت العرض */
+  @media (max-width: 760px) {
+    #layout{ flex-direction:column; }
+    #map{ flex:1 1 50%; }
+    #side{ width:100%; flex:1 1 50%; border-right:none; border-top:1px solid rgba(212,175,55,0.25); }
+  }
 
-        /* ===== شريط التحميل ===== */
-        .sync-bar { position: fixed; top: 0; left: 0; height: 3px; background: var(--gold); z-index: 9999; transition: width 0.1s linear; }
+  #alerts-host{ padding:8px; display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto; border-bottom:1px solid rgba(212,175,55,0.2); }
+  .alert-row{ padding:7px 10px; border-radius:7px; font-size:11.5px; display:flex; justify-content:space-between; align-items:center; animation:slideIn .2s ease; }
+  @keyframes slideIn{ from{opacity:0; transform:translateY(-4px);} to{opacity:1; transform:translateY(0);} }
 
-        /* ===== التبويبات الرئيسية ===== */
-        .tab-bar { display: flex; background: rgba(0,0,0,0.4); border-bottom: 1px solid rgba(255,255,255,0.08); position: sticky; top: 60px; z-index: 99; }
-        .tab-btn { flex: 1; padding: 12px 8px; text-align: center; cursor: pointer; font-size: 12px; color: #aaa; border-bottom: 3px solid transparent; transition: 0.2s; position: relative; }
-        .tab-btn.active { color: var(--gold); border-bottom-color: var(--gold); background: rgba(212,175,55,0.06); }
-        .tab-btn i { display: block; font-size: 17px; margin-bottom: 3px; }
-        .tab-badge { position: absolute; top: 6px; right: 18%; background: var(--danger); color: #fff; font-size: 9px; min-width: 16px; height: 16px; border-radius: 8px; display: none; align-items: center; justify-content: center; font-weight: bold; }
+  #driver-list{ padding:8px; flex:1; overflow-y:auto; }
+  .driver-card{
+    background:rgba(255,255,255,0.04); border:1px solid rgba(212,175,55,0.15); border-radius:10px;
+    padding:9px 11px; margin-bottom:7px; cursor:pointer; transition:.15s;
+  }
+  .driver-card:hover{ background:rgba(212,175,55,0.08); }
+  .driver-card.selected{ border-color:var(--gold); background:rgba(212,175,55,0.12); }
+  .dc-top{ display:flex; justify-content:space-between; align-items:center; }
+  .dc-name{ font-weight:bold; font-size:13px; }
+  .dc-dot{ width:9px; height:9px; border-radius:50%; display:inline-block; margin-left:6px; }
+  .dc-meta{ font-size:10.5px; color:#999; margin-top:3px; display:flex; gap:8px; flex-wrap:wrap; }
 
-        /* ===== صفحات ===== */
-        .page { display: none; padding: 15px 15px 100px; }
-        .page.active { display: block; }
+  #detail-panel{ border-top:1px solid rgba(212,175,55,0.25); padding:12px; font-size:12px; display:none; }
+  #detail-panel h4{ margin:0 0 6px; color:var(--gold); font-size:13.5px; }
+  #detail-panel .row{ display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.05); }
 
-        /* ===== إحصاءات ===== */
-        .stats-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px; }
-        .stat-card { background: var(--glass); padding: 12px; border-radius: 14px; border-right: 3px solid var(--gold); text-align: center; cursor: pointer; }
-        .stat-card .sv { font-size: 20px; font-weight: bold; color: var(--gold); margin-top: 4px; }
-        .stat-card .sl { font-size: 10px; opacity: 0.65; }
+  #empty-state{ text-align:center; color:#888; font-size:12px; padding:30px 14px; line-height:1.8; }
+  #empty-state b{ color:var(--gold); }
 
-        /* ===== بطاقات الطلبات ===== */
-        .orders-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
-        .order-card { background: rgba(255,255,255,0.04); border-radius: 16px; padding: 14px; border: 1px solid rgba(255,255,255,0.1); }
-        .order-card.new-order  { border-color: var(--gold); box-shadow: 0 0 12px rgba(212,175,55,0.2); }
-        .order-card.in-progress { border-color: var(--info); }
-        .order-card.chat-order  { border-color: #e91e8c; }
-        .oc-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-        .oc-id  { font-size: 10px; opacity: 0.5; }
-        .oc-time { font-size: 10px; opacity: 0.5; }
-        .oc-name { font-weight: bold; font-size: 15px; margin-bottom: 6px; }
-        .oc-items { font-size: 11px; color: #bbb; margin-bottom: 8px; line-height: 1.6; }
-        .oc-total { background: rgba(212,175,55,0.1); border: 1px dashed var(--gold); border-radius: 8px; padding: 7px 12px; text-align: center; font-size: 13px; margin-bottom: 10px; }
-        .oc-total b { color: var(--gold); }
-        .oc-driver { background: rgba(39,174,96,0.1); color: #2ecc71; padding: 6px 10px; border-radius: 8px; font-size: 12px; margin-bottom: 8px; }
-        .oc-prep { background: rgba(212,175,55,0.1); color: var(--gold); padding: 5px 10px; border-radius: 8px; font-size: 11px; text-align: center; margin-bottom: 8px; }
-        .status-label { display: inline-block; padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: bold; margin-bottom: 8px; }
-        .sl-new      { background: rgba(212,175,55,0.15); color: var(--gold); }
-        .sl-accepted { background: rgba(52,152,219,0.15); color: #3498db; }
-        .sl-preparing { background: rgba(241,196,15,0.15); color: #f1c40f; }
-        .sl-ready    { background: rgba(46,204,113,0.15); color: #2ecc71; }
-        .sl-picked   { background: rgba(155,89,182,0.15); color: #9b59b6; }
-        .sl-chat     { background: rgba(233,30,140,0.15); color: #e91e8c; }
+  #raw-toggle{ font-size:10.5px; color:#888; text-align:center; padding:6px; cursor:pointer; border-top:1px solid rgba(255,255,255,0.06); }
+  #raw-table-wrap{ display:none; padding:8px; max-height:200px; overflow:auto; font-size:10px; }
+  #raw-table-wrap table{ width:100%; border-collapse:collapse; }
+  #raw-table-wrap td, #raw-table-wrap th{ padding:4px 6px; border-bottom:1px solid rgba(255,255,255,0.08); text-align:right; white-space:nowrap; }
+  #raw-table-wrap th{ color:var(--gold); }
 
-        /* ===== أزرار الحالة ===== */
-        .status-btns { display: flex; flex-direction: column; gap: 6px; }
-        .sbtn { padding: 10px 14px; border-radius: 10px; border: none; font-weight: bold; cursor: pointer; font-size: 12px; width: 100%; text-align: center; transition: 0.15s; }
-        .sbtn:active { transform: scale(0.97); opacity: 0.85; }
-        .sbtn-accept   { background: rgba(52,152,219,0.18); color: #3498db; border: 1px solid #3498db; }
-        .sbtn-prep     { background: rgba(241,196,15,0.18); color: #f1c40f; border: 1px solid #f1c40f; }
-        .sbtn-ready    { background: rgba(46,204,113,0.18); color: #2ecc71; border: 1px solid #2ecc71; }
-        .sbtn-sent     { background: rgba(155,89,182,0.18); color: #9b59b6; border: 1px solid #9b59b6; }
-        .sbtn-chat     { background: linear-gradient(135deg,#e91e8c,#c2185b); color: #fff; border: none; }
-        .sbtn-reject   { background: rgba(231,76,60,0.15); color: var(--danger); border: 1px solid var(--danger); }
-        .sbtn-used     { opacity: 0.3; text-decoration: line-through; pointer-events: none; }
-
-        /* ===== شاشة الدردشة ===== */
-        #chat-screen { display: none; position: fixed; inset: 0; background: var(--p-dark); z-index: 500; flex-direction: column; }
-        .chat-hdr { padding: 14px 18px; background: rgba(0,0,0,0.6); display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(212,175,55,0.3); flex-shrink: 0; }
-        .chat-hdr-info .chat-cname { font-weight: bold; font-size: 15px; color: var(--gold); }
-        .chat-hdr-info .chat-oid   { font-size: 10px; opacity: 0.55; margin-top: 2px; }
-        .chat-msgs { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
-        .cmsg-wrap { display: flex; flex-direction: column; }
-        .cmsg-wrap.store  { align-items: flex-end; }
-        .cmsg-wrap.client { align-items: flex-start; }
-        .cmsg { max-width: 80%; padding: 10px 14px; border-radius: 14px; font-size: 13px; word-break: break-word; line-height: 1.5; }
-        .cmsg.store  { background: var(--gold); color: #000; border-bottom-right-radius: 2px; }
-        .cmsg.client { background: #2a2a2a; color: #fff; border-bottom-left-radius: 2px; }
-        .cmsg-time   { font-size: 9px; opacity: 0.55; margin-top: 2px; }
-        .chat-inp-row { padding: 12px 15px; display: flex; gap: 10px; background: rgba(0,0,0,0.4); border-top: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; }
-        .chat-inp-row input { flex: 1; padding: 12px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; color: #fff; outline: none; font-size: 13px; }
-        .chat-inp-row input:focus { border-color: var(--gold); }
-        .btn-send-msg { background: var(--gold); border: none; border-radius: 12px; width: 46px; color: #000; cursor: pointer; font-size: 15px; flex-shrink: 0; }
-        .chat-actions { padding: 10px 15px 18px; display: flex; gap: 10px; flex-shrink: 0; }
-        .btn-invoice  { flex: 2; background: var(--success); color: #fff; border: none; border-radius: 12px; padding: 13px; font-weight: bold; cursor: pointer; font-size: 13px; }
-        .btn-cancel-c { flex: 1; background: rgba(231,76,60,0.15); color: var(--danger); border: 1px solid var(--danger); border-radius: 12px; padding: 13px; font-weight: bold; cursor: pointer; font-size: 12px; }
-
-        /* ===== مودال الفاتورة ===== */
-        #invoice-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 600; align-items: center; justify-content: center; padding: 20px; }
-        .inv-card { background: var(--p-main); border: 2px solid var(--gold); border-radius: 20px; padding: 22px; width: 100%; max-width: 400px; }
-        .inv-card textarea { width: 100%; height: 130px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.15); border-radius: 10px; padding: 10px; resize: none; font-size: 13px; font-family: inherit; margin: 10px 0; }
-        .inv-total-box { background: rgba(212,175,55,0.1); border: 1px dashed var(--gold); border-radius: 10px; padding: 10px; text-align: center; margin-bottom: 14px; }
-        .inv-btns { display: flex; gap: 10px; }
-
-        /* ===== تبويبات صفحة التواصل ===== */
-        .chat-list-item { background: var(--glass); border-radius: 14px; padding: 14px; margin-bottom: 10px; border: 1px solid rgba(212,175,55,0.2); cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: 0.2s; }
-        .chat-list-item:hover { border-color: var(--gold); background: rgba(212,175,55,0.05); }
-        .chat-list-item .cli-name { font-weight: bold; font-size: 14px; }
-        .chat-list-item .cli-sub  { font-size: 11px; opacity: 0.6; margin-top: 3px; }
-        .chat-list-item .cli-badge { background: #e91e8c; color: #fff; font-size: 10px; padding: 3px 8px; border-radius: 10px; font-weight: bold; }
-        .empty-state { text-align: center; padding: 50px 20px; opacity: 0.35; }
-        .empty-state i { font-size: 40px; display: block; margin-bottom: 10px; }
-
-        /* ===== إدارة المنيو ===== */
-        .menu-section { background: var(--glass); border-radius: 14px; padding: 14px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.08); }
-        .menu-section-title { color: var(--gold); font-weight: bold; font-size: 14px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
-        .menu-item-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; }
-        .menu-item-row:last-child { border-bottom: none; }
-        .menu-item-price { color: var(--gold); font-weight: bold; }
-        .menu-item-avail { font-size: 10px; padding: 2px 8px; border-radius: 8px; cursor: pointer; }
-        .avail-yes { background: rgba(46,204,113,0.2); color: #2ecc71; }
-        .avail-no  { background: rgba(231,76,60,0.2); color: var(--danger); }
-        .add-item-form { background: rgba(212,175,55,0.06); border: 1px dashed var(--gold); border-radius: 12px; padding: 12px; margin-top: 10px; }
-        .add-item-form input { margin-bottom: 8px; }
-        .add-item-form input:last-of-type { margin-bottom: 0; }
-        .fi { width: 100%; padding: 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; color: #fff; outline: none; font-size: 13px; }
-        .fi:focus { border-color: var(--gold); }
-
-        /* ===== إعدادات المطعم ===== */
-        .settings-row { background: var(--glass); border-radius: 12px; padding: 14px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(255,255,255,0.06); }
-        .settings-label { font-size: 13px; }
-        .settings-label small { display: block; font-size: 10px; opacity: 0.55; margin-top: 2px; }
-        .toggle-switch { position: relative; width: 46px; height: 24px; flex-shrink: 0; }
-        .toggle-switch input { opacity: 0; width: 0; height: 0; }
-        .toggle-slider { position: absolute; inset: 0; background: #444; border-radius: 24px; cursor: pointer; transition: 0.3s; }
-        .toggle-slider:before { content: ''; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: 0.3s; }
-        .toggle-switch input:checked + .toggle-slider { background: var(--gold); }
-        .toggle-switch input:checked + .toggle-slider:before { transform: translateX(22px); }
-
-        /* ===== أرشيف ===== */
-        .arch-item { background: var(--glass); border-radius: 12px; padding: 12px; margin-bottom: 8px; border-right: 3px solid var(--gold); }
-        .arch-item .ai-name { font-weight: bold; font-size: 13px; }
-        .arch-item .ai-detail { font-size: 11px; color: var(--gold); white-space: pre-line; margin-top: 4px; opacity: 0.85; }
-        .arch-item .ai-time { font-size: 10px; opacity: 0.5; margin-top: 3px; }
-
-        /* ===== Toast ===== */
-        #toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: var(--gold); color: #000; padding: 10px 22px; border-radius: 20px; font-size: 13px; font-weight: bold; display: none; z-index: 9998; white-space: nowrap; }
-
-        @keyframes pulse { 0%{opacity:.8} 50%{opacity:1} 100%{opacity:.8} }
-        .pulse { animation: pulse 2s infinite; }
-    </style>
+  .leaflet-popup-content-wrapper{ background:#241026; color:#fff; border:1px solid var(--gold); }
+  .leaflet-popup-tip{ background:#241026; }
+</style>
 </head>
-<body onclick="initAudio()">
+<body>
 
-<div class="sync-bar" id="sync-bar"></div>
-<div id="toast"></div>
-
-<!-- ===== شاشة الدخول ===== -->
-<div id="auth-screen" class="auth-overlay">
-    <div class="auth-card">
-        <img src="https://i.postimg.cc/QxzPkmPf/Whats-App-Image-2026-04-10-at-6-22-30-PM-t7edrz.jpg">
-        <h2 style="color:var(--gold); margin:0 0 5px;">بوابة المطعم 🦅</h2>
-        <p style="font-size:11px; opacity:0.6; margin:0 0 20px;">شاهين إكسبريس</p>
-        <input class="inp" type="email" id="login-email" placeholder="البريد الإلكتروني">
-        <input class="inp" type="password" id="login-code" placeholder="كود التفعيل">
-        <button class="btn-login" onclick="checkAuth()"><i class="fas fa-sign-in-alt"></i> دخول</button>
+  <div id="topbar">
+    <h1>🦅 لوحة تتبع المناديب — شاهين إكسبريس</h1>
+    <span id="conn-status" class="conn-bad">جاري الاتصال...</span>
+    <div id="stats-bar">
+      <span class="stat-chip">🟢 متحرك: <b id="cnt-moving">0</b></span>
+      <span class="stat-chip">🟠 متوقف: <b id="cnt-stopped">0</b></span>
+      <span class="stat-chip">⚪ غير متصل: <b id="cnt-offline">0</b></span>
+      <span class="stat-chip">آخر تحديث: <span id="last-refresh">--</span></span>
     </div>
-</div>
+    <button id="refresh-btn" onclick="manualRefresh()">🔄 تحديث الآن</button>
+  </div>
 
-<!-- ===== شاشة الدردشة (تطفو فوق كل شيء) ===== -->
-<div id="chat-screen">
-    <div class="chat-hdr">
-        <div class="chat-hdr-info">
-            <div class="chat-cname" id="chat-cname">...</div>
-            <div class="chat-oid"   id="chat-oid">...</div>
-        </div>
-        <button onclick="closeChat()" style="background:none;border:none;color:#fff;font-size:22px;cursor:pointer;"><i class="fas fa-times"></i></button>
+  <div id="layout">
+    <div id="map"></div>
+    <div id="side">
+      <div id="alerts-host"></div>
+      <div id="driver-list">
+        <div id="empty-state">جاري تحميل بيانات المناديب...</div>
+      </div>
+      <div id="detail-panel"></div>
+      <div id="raw-toggle" onclick="toggleRaw()">عرض البيانات الخام (للتشخيص) ⌄</div>
+      <div id="raw-table-wrap"></div>
     </div>
-    <div class="chat-msgs" id="chat-flow"></div>
-    <div class="chat-inp-row">
-        <input type="text" id="chat-input" placeholder="اكتب ردك..." onkeydown="if(event.key==='Enter')sendMsg()">
-        <button class="btn-send-msg" onclick="sendMsg()"><i class="fas fa-paper-plane"></i></button>
-    </div>
-    <div class="chat-actions">
-        <button class="btn-invoice" onclick="showInvoiceBox()"><i class="fas fa-file-invoice"></i> إرسال الفاتورة للعميل</button>
-        <button class="btn-cancel-c" onclick="cancelDueToNoResponse()"><i class="fas fa-times-circle"></i> إلغاء</button>
-    </div>
-</div>
-
-<!-- ===== مودال الفاتورة ===== -->
-<div id="invoice-modal">
-    <div class="inv-card">
-        <h3 style="color:var(--gold);margin:0 0 8px;font-size:16px;"><i class="fas fa-receipt"></i> تحديد الأصناف والأسعار</h3>
-        <p style="font-size:11px;opacity:0.7;margin:0 0 5px;">اكتب الصنف وبجانبه السعر — يُجمع تلقائياً</p>
-        <textarea id="inv-items" placeholder="مثال:&#10;وجبة دجاج 25000&#10;مشروب 5000&#10;حلى 8000" oninput="calcInvoiceTotal()"></textarea>
-        <div class="inv-total-box">
-            <span style="font-size:12px;opacity:0.8;">الإجمالي:</span><br>
-            <b id="inv-total" style="font-size:22px;color:var(--gold);">0</b> <small>ل.س</small>
-        </div>
-        <div class="inv-btns">
-            <button onclick="sendInvoice()" class="btn-login" style="flex:2;"><i class="fas fa-check"></i> تأكيد وإرسال</button>
-            <button onclick="document.getElementById('invoice-modal').style.display='none'" style="flex:1;background:rgba(255,255,255,0.07);color:#fff;border:1px solid #555;border-radius:12px;cursor:pointer;padding:14px;">إلغاء</button>
-        </div>
-    </div>
-</div>
-
-<!-- ===== المحتوى الرئيسي ===== -->
-<div id="main-content" style="display:none;">
-    <div class="app-header">
-        <div class="header-info">
-            <div class="res-name" id="display-res-name">...</div>
-            <div class="res-sub"  id="display-res-sub">...</div>
-        </div>
-        <div class="header-btns">
-            <div class="hbtn pulse" id="notif-bell" style="color:var(--gold); display:none;" title="طلبات جديدة"><i class="fas fa-bell"></i></div>
-            <div class="hbtn" onclick="logout()" style="color:var(--danger);"><i class="fas fa-power-off"></i></div>
-        </div>
-    </div>
-
-    <!-- تبويبات -->
-    <div class="tab-bar">
-        <div class="tab-btn active" id="tab-orders" onclick="switchTab('orders')">
-            <i class="fas fa-receipt"></i>الطلبات
-            <span class="tab-badge" id="badge-orders"></span>
-        </div>
-        <div class="tab-btn" id="tab-chat" onclick="switchTab('chat')">
-            <i class="fas fa-comments"></i>التواصل
-            <span class="tab-badge" id="badge-chat"></span>
-        </div>
-        <div class="tab-btn" id="tab-menu" onclick="switchTab('menu')">
-            <i class="fas fa-utensils"></i>المنيو
-        </div>
-        <div class="tab-btn" id="tab-archive" onclick="switchTab('archive')">
-            <i class="fas fa-archive"></i>الأرشيف
-        </div>
-        <div class="tab-btn" id="tab-settings" onclick="switchTab('settings')">
-            <i class="fas fa-cog"></i>إعدادات
-        </div>
-    </div>
-
-    <!-- ===== صفحة الطلبات ===== -->
-    <div class="page active" id="page-orders">
-        <div class="stats-row">
-            <div class="stat-card" onclick="switchTab('archive')">
-                <div class="sl">مكتملة اليوم</div>
-                <div class="sv" id="stat-done">0</div>
-            </div>
-            <div class="stat-card">
-                <div class="sl">نشطة الآن</div>
-                <div class="sv" id="stat-active" style="color:#3498db;">0</div>
-            </div>
-            <div class="stat-card" onclick="switchTab('archive')">
-                <div class="sl">أرباح اليوم</div>
-                <div class="sv" id="stat-profit" style="font-size:13px;">0</div>
-            </div>
-        </div>
-        <div style="padding:0 2px 12px; display:flex; gap:8px;">
-            <input type="text" class="fi" id="orders-search" placeholder="🔍 ابحث باسم العميل أو رقم الطلب..." oninput="filterAndRenderOrders()" style="margin:0;">
-        </div>
-        <div class="orders-grid" id="orders-list">
-            <div class="empty-state"><i class="fas fa-check-circle"></i><p>لا توجد طلبات نشطة</p></div>
-        </div>
-    </div>
-
-    <!-- ===== صفحة التواصل ===== -->
-    <div class="page" id="page-chat">
-        <div id="chat-disabled-notice" style="display:none; background:rgba(231,76,60,0.1); border:1px solid var(--danger); border-radius:12px; padding:18px; text-align:center; margin-bottom:15px;">
-            <i class="fas fa-lock" style="font-size:24px; color:var(--danger); margin-bottom:8px; display:block;"></i>
-            <b style="color:var(--danger);">التواصل المباشر معطّل</b><br>
-            <small style="opacity:0.7;">يمكن تفعيله من قسم الإعدادات أو من لوحة الإدارة</small>
-        </div>
-        <div id="chat-orders-list"></div>
-    </div>
-
-    <!-- ===== صفحة المنيو ===== -->
-    <div class="page" id="page-menu">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <h3 style="color:var(--gold); margin:0; font-size:16px;"><i class="fas fa-utensils"></i> إدارة المنيو</h3>
-            <button onclick="showAddSectionForm()" class="btn-login" style="width:auto; padding:8px 16px; font-size:12px;"><i class="fas fa-plus"></i> قسم جديد</button>
-        </div>
-        <div id="add-section-form" style="display:none; background:rgba(212,175,55,0.06); border:1px dashed var(--gold); border-radius:12px; padding:12px; margin-bottom:14px;">
-            <input class="fi" id="new-sec-name" placeholder="اسم القسم (مثال: وجبات رئيسية)" style="margin-bottom:8px;">
-            <input class="fi" id="new-sec-icon" placeholder="أيقونة (اختياري: 🍽️)" style="margin-bottom:8px;" value="🍽️">
-            <div style="display:flex; gap:8px;">
-                <button onclick="addMenuSection()" class="btn-login" style="flex:1; padding:10px; font-size:12px;"><i class="fas fa-check"></i> إضافة</button>
-                <button onclick="document.getElementById('add-section-form').style.display='none'" style="flex:1; padding:10px; background:rgba(255,255,255,0.07); color:#fff; border:1px solid #555; border-radius:10px; cursor:pointer; font-size:12px;">إلغاء</button>
-            </div>
-        </div>
-        <div id="menu-sections-container"></div>
-    </div>
-
-    <!-- ===== صفحة الأرشيف ===== -->
-    <div class="page" id="page-archive">
-        <h3 style="color:var(--gold); margin:0 0 14px; font-size:16px;"><i class="fas fa-archive"></i> الأرشيف والسابقة</h3>
-        <div id="archive-list">
-            <div class="empty-state"><i class="fas fa-box-open"></i><p>لا توجد طلبات مكتملة بعد</p></div>
-        </div>
-    </div>
-
-    <!-- ===== صفحة الإعدادات ===== -->
-    <div class="page" id="page-settings">
-        <h3 style="color:var(--gold); margin:0 0 14px; font-size:16px;"><i class="fas fa-cog"></i> إعدادات المطعم</h3>
-
-        <div class="settings-row">
-            <div class="settings-label">
-                💬 التواصل المباشر مع العملاء
-                <small>تفعيل الدردشة في قسم التواصل</small>
-            </div>
-            <label class="toggle-switch">
-                <input type="checkbox" id="toggle-chat" onchange="saveLocalSetting('chat_enabled', this.checked)">
-                <span class="toggle-slider"></span>
-            </label>
-        </div>
-
-        <div class="settings-row">
-            <div class="settings-label">
-                ⏱️ مدة التجهيز التقريبية
-                <small>تظهر للعميل في الطلب</small>
-            </div>
-            <div style="display:flex; align-items:center; gap:8px;">
-                <input type="number" id="prep-time-val" class="fi" style="width:70px; margin:0; text-align:center; padding:8px;" min="0" max="240" onchange="saveLocalSetting('prep_time', this.value)">
-                <span style="font-size:12px; opacity:0.6;">دقيقة</span>
-            </div>
-        </div>
-
-        <div class="settings-row">
-            <div class="settings-label">
-                🔔 صوت الإشعارات
-                <small>تشغيل صوت عند وصول طلب جديد</small>
-            </div>
-            <label class="toggle-switch">
-                <input type="checkbox" id="toggle-sound" checked onchange="saveLocalSetting('sound_enabled', this.checked)">
-                <span class="toggle-slider"></span>
-            </label>
-        </div>
-
-        <div style="background:rgba(212,175,55,0.06); border:1px solid rgba(212,175,55,0.25); border-radius:14px; padding:15px; margin-top:10px;">
-            <p style="font-size:12px; color:var(--gold); font-weight:bold; margin:0 0 8px;"><i class="fas fa-info-circle"></i> ملاحظة</p>
-            <p style="font-size:11px; opacity:0.7; margin:0; line-height:1.7;">
-                ⚠️ التواصل المباشر يُتحكم به من لوحة الإدارة فقط — لا يمكن تعديله من هنا.<br>
-                ⚠️ تجهيز الطلبات وتعديل المنيو يتحكم بها الإدارة أيضاً.<br>
-                🔔 صوت الإشعارات فقط يمكن تغييره من الجهاز.
-            </p>
-        </div>
-
-        <button onclick="logout()" style="width:100%; margin-top:20px; padding:14px; background:rgba(231,76,60,0.15); color:var(--danger); border:1px solid var(--danger); border-radius:12px; font-weight:bold; cursor:pointer; font-size:14px;">
-            <i class="fas fa-sign-out-alt"></i> تسجيل الخروج
-        </button>
-    </div>
-</div>
+  </div>
 
 <script>
-    const _sb = supabase.createClient(
-        'https://ricoslplbhphydhtrufe.supabase.co',
-        'sb_publishable_k6LgEuwPLdCsBMCFC12wfQ_BSOJotuw'
-    );
+  // =====================================================================
+  // إعدادات الاتصال — نفس بيانات الاتصال المستخدمة في باقي تطبيقات شاهين إكسبريس
+  // =====================================================================
+  const SB_URL = "https://ricoslplbhphydhtrufe.supabase.co";
+  const SB_KEY = "sb_publishable_k6LgEuwPLdCsBMCFC12wfQ_BSOJotuw";
+  const client = supabase.createClient(SB_URL, SB_KEY);
 
-    let currentRes = null, allOrders = [], historyOrders = [], refreshTimer = 0;
-    let activeOrderId = null, chatChannel = null, statusChannel = null;
-    let msgIds = new Set(), _archivedOrderIds = new Set(), _msgPollInterval = null;
-    let _lastOrderCount = 0;
-    // ===== صوتان منفصلان: صوت الطلبات وصوت التواصل/الرسائل =====
-    const sound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-    const chatSound = new Audio('https://assets.mixkit.co/active_storage/sfx/1862/1862-preview.mp3');
-    // ===== نهاية إضافة الصوتين المنفصلين =====
+  const LIVE_TABLE = 'tracking_live';
+  const PATH_TABLE = 'tracking_path';
+  const ALERTS_TABLE = 'tracking_alerts';
+  const ZONE = { name: 'حماه', lat: 35.1318, lng: 36.7578, radiusKm: 25 };
+  const STALE_SEC = 60, STOPPED_MIN = 6, ALERT_COOLDOWN_MS = 3 * 60 * 1000;
 
-    // ===== إعدادات النوع =====
-    const TYPE_CFG = {
-        restaurant: { label: 'مطعم',    icon: '🍽️', color: '#d4af37' },
-        flowers:    { label: 'ورود',     icon: '🌸', color: '#e91e8c' },
-        sweets:     { label: 'حلويات',   icon: '🍬', color: '#8e44ad' },
-        gifts:      { label: 'هدايا',    icon: '🎁', color: '#e67e22' },
-        pharmacy:   { label: 'صيدلية',   icon: '💊', color: '#3498db' },
-        other:      { label: 'متجر',     icon: '🛍️', color: '#16a085' },
-    };
-    function getCfg(t) { return TYPE_CFG[t] || TYPE_CFG['other']; }
+  let map, driversData = {}, markers = {}, pathLine = null, selectedDriverId = null;
+  const lastAlertAt = {};
 
-    function initAudio() { sound.play().then(() => { sound.pause(); sound.currentTime = 0; }).catch(() => {}); }
+  // ----- تهيئة الخريطة -----
+  function initMap() {
+    map = L.map('map', { attributionControl: true }).setView([ZONE.lat, ZONE.lng], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      subdomains: ['a', 'b', 'c'],
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+    L.circle([ZONE.lat, ZONE.lng], { radius: ZONE.radiusKm * 1000, color: '#d4af37', weight: 1, fillOpacity: 0.03, dashArray: '6,6' })
+      .addTo(map).bindTooltip('نطاق العمل: ' + ZONE.name);
+    window.addEventListener('resize', () => map.invalidateSize());
+    setTimeout(() => map.invalidateSize(), 300);
+  }
 
-    // ===== إعدادات محلية =====
-    function getLocalSetting(key, def) {
-        const s = localStorage.getItem('sh_set_' + (currentRes ? currentRes.id : 'x') + '_' + key);
-        if (s === null) return def;
-        if (s === 'true') return true;
-        if (s === 'false') return false;
-        const n = parseFloat(s);
-        return isNaN(n) ? s : n;
-    }
-    function saveLocalSetting(key, val) {
-        localStorage.setItem('sh_set_' + (currentRes ? currentRes.id : 'x') + '_' + key, String(val));
-    }
-    function getChatEnabled() {
-        // أولوية: إعداد محلي → ثم DB
-        const local = localStorage.getItem('sh_set_' + (currentRes ? currentRes.id : 'x') + '_chat_enabled');
-        if (local !== null) return local === 'true';
-        return currentRes && currentRes.chat_enabled === true;
-    }
-    function getPrepTime() {
-        const local = localStorage.getItem('sh_set_' + (currentRes ? currentRes.id : 'x') + '_prep_time');
-        if (local !== null) return parseInt(local) || 0;
-        return currentRes ? (parseInt(currentRes.prep_time) || 0) : 0;
-    }
-    function getSoundEnabled() {
-        return getLocalSetting('sound_enabled', true);
+  function km(lat1, lng1, lat2, lng2) {
+    const R = 6371, toRad = Math.PI / 180;
+    const dLat = (lat2 - lat1) * toRad, dLng = (lng2 - lng1) * toRad;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function timeAgo(iso) {
+    if (!iso) return 'لا يوجد';
+    const sec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (sec < 60) return `منذ ${sec} ثانية`;
+    if (sec < 3600) return `منذ ${Math.floor(sec/60)} دقيقة`;
+    return `منذ ${Math.floor(sec/3600)} ساعة`;
+  }
+
+  function statusOf(row) {
+    if (!row.updated_at) return 'offline';
+    const gapSec = (Date.now() - new Date(row.updated_at).getTime()) / 1000;
+    if (row.status !== 'online' || gapSec > STALE_SEC) return 'offline';
+    return row.is_moving ? 'moving' : 'stopped';
+  }
+  function statusColor(s) { return { moving: '#2ecc71', stopped: '#e67e22', offline: '#888' }[s]; }
+  function statusLabel(s) { return { moving: '🟢 متحرك', stopped: '🟠 متوقف', offline: '⚪ غير متصل' }[s]; }
+
+  function driverIcon(color) {
+    return L.divIcon({ className:'', html:`<div style="font-size:22px; filter:drop-shadow(0 0 4px ${color});">🦅</div>`, iconSize:[26,26], iconAnchor:[13,13] });
+  }
+
+  // =====================================================================
+  // عرض/تحديث البيانات
+  // =====================================================================
+  function setConnStatus(ok, msg) {
+    const el = document.getElementById('conn-status');
+    el.className = ok ? 'conn-ok' : 'conn-bad';
+    el.innerText = msg;
+  }
+
+  function renderAll() {
+    const rows = Object.values(driversData);
+    document.getElementById('last-refresh').innerText = new Date().toLocaleTimeString('ar-SY');
+
+    let moving = 0, stopped = 0, offline = 0;
+    const listEl = document.getElementById('driver-list');
+    if (!rows.length) {
+      listEl.innerHTML = `<div id="empty-state">
+        <b>لا يوجد أي مندوب بجدول التتبع حالياً.</b><br><br>
+        هذا يعني أحد شيئين:<br>
+        1) لا يوجد مندوب شغّال التطبيق الآن، أو<br>
+        2) كود إرسال الموقع بتطبيق المندوب لم يُفعَّل بعد على الجهاز.<br><br>
+        افتح "عرض البيانات الخام" بالأسفل للتأكد من حالة الجدول مباشرة.
+      </div>`;
+    } else {
+      listEl.innerHTML = '';
     }
 
-    // ===== توليد اسم مستخدم تلقائي فريد =====
-    function generateAutoUsername(prefix) {
-        const ts = Date.now().toString(36).toUpperCase().slice(-5);
-        const rand = Math.floor(Math.random() * 9000 + 1000);
-        return (prefix || 'USR') + '-' + ts + '-' + rand;
-    }
-    // ===== نهاية توليد اسم المستخدم التلقائي =====
+    rows.sort((a,b) => (a.driver_name||'').localeCompare(b.driver_name||''));
+    rows.forEach(row => {
+      const s = statusOf(row);
+      if (s === 'moving') moving++; else if (s === 'stopped') stopped++; else offline++;
 
-    // ===== تسجيل الدخول =====
-    // [SEC-FIX-2] Brute Force: حماية تسجيل الدخول من المحاولات المتعددة
-    // [SEC-PATCH-11] استمرارية القفل عبر إعادة التحميل باستخدام sessionStorage
-    let _loginAttempts = parseInt(sessionStorage.getItem('_res_attempts') || '0'), _loginLockUntil = parseInt(sessionStorage.getItem('_res_lock_until') || '0');
-    async function checkAuth() {
-        const now = Date.now();
-        if (now < _loginLockUntil) {
-            const secs = Math.ceil((_loginLockUntil - now) / 1000);
-            showToast('⛔ محظور مؤقتاً. انتظر ' + secs + ' ثانية');
-            return;
-        }
-        const email = document.getElementById('login-email').value.trim().toLowerCase();
-        const code  = document.getElementById('login-code').value.trim();
-        if (!email || !code) { showToast('يرجى إدخال البريد والكود ❌'); return; }
-        // [FIX] البحث بالإيميل فقط أولاً ثم مقارنة الكود يدوياً لتفادي حساسية الحروف
-        const { data: rowData, error: rowError } = await _sb.from('restaurants').select('*').ilike('email', email).maybeSingle();
-        // [SEC-PATCH-21] إزالة console.log الذي كان يطبع الإيميل وبيانات الدخول في بيئة الإنتاج
-        const data = rowData && (String(rowData.access_code).trim() === String(code).trim()) ? rowData : null;
-        if (data) {
-            _loginAttempts = 0; // إعادة العداد عند النجاح
-            sessionStorage.removeItem('_res_attempts');
-            sessionStorage.removeItem('_res_lock_until');
-            currentRes = data;
-            // ===== توليد اسم مستخدم تلقائي إذا لم يكن موجوداً =====
-            if (!currentRes.auto_username) {
-                const autoUser = generateAutoUsername('RES');
-                try { await _sb.from('restaurants').update({ auto_username: autoUser }).eq('id', currentRes.id); } catch(e) {}
-                currentRes.auto_username = autoUser;
-            }
-            // ===== نهاية توليد اسم المستخدم =====
-            // [SEC-PATCH-27] إضافة timestamp للجلسة للتحقق من الصلاحية (24 ساعة)
-            const _sessionData39 = Object.assign({}, data, { _ts: Date.now() });
-            localStorage.setItem('sh_store_session', JSON.stringify(_sessionData39));
-            startApp();
+      // ----- ماركر الخريطة -----
+      if (row.lat && row.lng) {
+        if (!markers[row.driver_id]) {
+          markers[row.driver_id] = L.marker([row.lat, row.lng], { icon: driverIcon(statusColor(s)) })
+            .addTo(map).on('click', () => selectDriver(row.driver_id));
         } else {
-            _loginAttempts++;
-            sessionStorage.setItem('_res_attempts', _loginAttempts);
-            if (_loginAttempts >= 5) {
-                _loginLockUntil = Date.now() + 60000;
-                sessionStorage.setItem('_res_lock_until', _loginLockUntil);
-                _loginAttempts = 0;
-                sessionStorage.setItem('_res_attempts', '0');
-            }
-            showToast('بيانات الدخول غير صحيحة ❌');
+          markers[row.driver_id].setLatLng([row.lat, row.lng]);
+          markers[row.driver_id].setIcon(driverIcon(statusColor(s)));
         }
-    }
+        markers[row.driver_id].bindTooltip(`${row.driver_name||'مندوب'} — ${statusLabel(s)}`);
+      } else if (markers[row.driver_id]) {
+        map.removeLayer(markers[row.driver_id]); delete markers[row.driver_id];
+      }
 
-    // ===== بدء التطبيق =====
-    function startApp() {
-        const s = localStorage.getItem('sh_store_session');
-        // [SEC-PATCH-27] التحقق من صحة الجلسة وانتهاء صلاحيتها (24 ساعة)
-        if (s) {
-            try {
-                const _parsed = JSON.parse(s);
-                const _SESSION_TTL = 24 * 60 * 60 * 1000;
-                if (_parsed._ts && (Date.now() - _parsed._ts) > _SESSION_TTL) {
-                    localStorage.removeItem('sh_store_session');
-                    return;
-                }
-                currentRes = _parsed;
-            } catch(e) { localStorage.removeItem('sh_store_session'); return; }
-        }
-        if (!currentRes) return;
-        document.getElementById('auth-screen').style.display = 'none';
-        document.getElementById('main-content').style.display = 'block';
-        document.getElementById('display-res-name').innerText = currentRes.name;
-        const cfg = getCfg(currentRes.specialty_type);
-        document.getElementById('display-res-sub').innerText = cfg.icon + ' ' + cfg.label;
-        // جلب أحدث بيانات المطعم من DB (بما فيها صلاحيات الإدارة)
-        _sb.from('restaurants').select('*').eq('id', currentRes.id).single().then(({ data: fresh }) => {
-            if (fresh) { currentRes = fresh; localStorage.setItem('sh_store_session', JSON.stringify(fresh)); }
-            _applySettings();
-        });
-        _applySettings();
-        loadOrders(true);
-        loadHistory();
-        renderMenuSections();
-        // تحديث دوري كل 5 ثواني
-        // [FIX-INTERVAL-39] منع تكديس المؤقتات عند إعادة استدعاء startApp
-        if (window._mainRefreshInterval39) clearInterval(window._mainRefreshInterval39);
-        window._mainRefreshInterval39 = setInterval(() => {
-            refreshTimer += 5;
-            document.getElementById('sync-bar').style.width = (refreshTimer % 100) + '%';
-            if (refreshTimer % 100 === 0) { loadOrders(); loadHistory(); }
-        }, 250);
-    }
-
-    // ===== تطبيق الإعدادات =====
-    function _applySettings() {
-        if (!currentRes) return;
-        // ===== تطبيق صلاحيات الإدارة =====
-        // صلاحية التواصل المباشر — تُقرأ من DB فقط (is_direct_contact)
-        const dbDirectContact = currentRes.is_direct_contact === true;
-        const chatNotice = document.getElementById('chat-disabled-notice');
-        if (chatNotice) chatNotice.style.display = dbDirectContact ? 'none' : 'block';
-        // إخفاء/إظهار تبويب التواصل بالكامل حسب الصلاحية
-        const tabChat = document.getElementById('tab-chat');
-        if (tabChat) {
-            if (!dbDirectContact) {
-                tabChat.style.opacity = '0.35';
-                tabChat.style.pointerEvents = 'none';
-                tabChat.title = 'التواصل المباشر غير مفعّل من الإدارة';
-            } else {
-                tabChat.style.opacity = '1';
-                tabChat.style.pointerEvents = '';
-                tabChat.title = '';
-            }
-        }
-        // صلاحية تعديل المنيو — تُقرأ من DB فقط (is_menu_enabled)
-        const dbMenuEnabled = currentRes.is_menu_enabled === true;
-        const tabMenu = document.getElementById('tab-menu');
-        if (tabMenu) {
-            if (!dbMenuEnabled) {
-                tabMenu.style.opacity = '0.35';
-                tabMenu.style.pointerEvents = 'none';
-                tabMenu.title = 'تعديل المنيو غير مفعّل من الإدارة';
-            } else {
-                tabMenu.style.opacity = '1';
-                tabMenu.style.pointerEvents = '';
-                tabMenu.title = '';
-            }
-        }
-        // صلاحية تجهيز الطلبات — تُقرأ من DB فقط (allow_orders)
-        const dbAllowOrders = currentRes.allow_orders === true;
-        const tabOrders = document.getElementById('tab-orders');
-        if (tabOrders) {
-            if (!dbAllowOrders) {
-                tabOrders.style.opacity = '0.35';
-                tabOrders.style.pointerEvents = 'none';
-                tabOrders.title = 'تجهيز الطلبات غير مفعّل من الإدارة';
-            } else {
-                tabOrders.style.opacity = '1';
-                tabOrders.style.pointerEvents = '';
-                tabOrders.title = '';
-            }
-        }
-        // ===== نهاية تطبيق صلاحيات الإدارة =====
-        // مدة التجهيز
-        const prepEl = document.getElementById('prep-time-val');
-        if (prepEl) prepEl.value = getPrepTime();
-        // toggle الإعدادات — التواصل يعتمد على DB فقط الآن
-        const toggleChat = document.getElementById('toggle-chat');
-        if (toggleChat) { toggleChat.checked = dbDirectContact; toggleChat.disabled = true; }
-        const toggleSound = document.getElementById('toggle-sound');
-        if (toggleSound) toggleSound.checked = getSoundEnabled();
-    }
-
-    // ===== تبديل الصفحات =====
-    function switchTab(tab) {
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-        document.getElementById('tab-' + tab).classList.add('active');
-        document.getElementById('page-' + tab).classList.add('active');
-        // مسح الشارة عند فتح التبويب
-        const badge = document.getElementById('badge-' + tab);
-        if (badge) { badge.style.display = 'none'; }
-        if (tab === 'chat') renderChatOrders();
-        if (tab === 'archive') renderArchive();
-        if (tab === 'menu') renderMenuSections();
-        if (tab === 'settings') _applySettings();
-    }
-
-    // ===== جلب الطلبات =====
-    async function loadOrders(isFirst = false) {
-        if (!currentRes) return;
-        // ===== التحقق من صلاحية تجهيز الطلبات =====
-        try {
-            const freshRes = await _sb.from('restaurants').select('*').eq('id', currentRes.id).single();
-            if (freshRes.data) {
-                currentRes.allow_orders = freshRes.data.allow_orders;
-                currentRes.is_direct_contact = freshRes.data.is_direct_contact;
-                currentRes.is_menu_enabled = freshRes.data.is_menu_enabled;
-                localStorage.setItem('sh_store_session', JSON.stringify(currentRes));
-            }
-        } catch(e) { /* نكمل بالبيانات المحلية عند الخطأ */ }
-        if (currentRes.allow_orders === false) {
-            // صلاحية تجهيز الطلبات مُعطَّلة صراحةً من الإدارة
-            const list = document.getElementById('orders-list');
-            if (list) list.innerHTML = '<div class="empty-state"><i class="fas fa-lock" style="color:var(--danger);"></i><p style="color:var(--danger); font-size:12px;">خدمة تجهيز الطلبات غير مفعّلة<br><small style="opacity:0.7;">تواصل مع الإدارة لتفعيلها</small></p></div>';
-            document.getElementById('stat-active').innerText = '0';
-            _lastOrderCount = 0;
-            allOrders = [];
-            return;
-        }
-        // ===== نهاية التحقق من صلاحية تجهيز الطلبات =====
-        const { data: orders } = await _sb.from('sh_public_orders')
-            .select('*')
-            .eq('restaurant_name', currentRes.name)
-            .in('status', ['accepted', 'preparing', 'ready', 'consulting', 'pending_store', 'searching'])
-            .order('created_at', { ascending: false });
-
-        const _filtered = (orders || []).filter(o => {
-            if (_archivedOrderIds.has(String(o.id))) return false;
-            if (o.status === 'searching' && o.is_consultation === false) { _archivedOrderIds.add(String(o.id)); return false; }
-            // ===== الفصل الكامل بين النظامين =====
-            // طلب التواصل المباشر (direct_chat) → خانة التواصل فقط، لا يظهر في خانة الطلبات
-            // طلب المنيو (menu_order) → خانة الطلبات فقط، لا يذهب للمحادثات
-            // ===== نهاية الفصل =====
-            // ===== إذا المطعم غير شريك (allow_orders=false) =====
-            // الطلب لا يظهر للمطعم إلا بعد أن يستلمه المندوب (حالة accepted فما فوق)
-            if (!currentRes.allow_orders) {
-                if (o.status === 'searching' || o.status === 'awaiting_driver' || o.status === 'pending_store') return false;
-            }
-            return true;
-        });
-        allOrders = _filtered;
-
-        const newCount = allOrders.length;
-        // ===== حساب عدد طلبات التجهيز وعدد طلبات التواصل بشكل منفصل =====
-        const newPrepOrders = allOrders.filter(o => o.status !== 'consulting' && o.status !== 'pending_store');
-        const newChatOrders = allOrders.filter(o => o.status === 'consulting' || o.status === 'pending_store');
-        const _prevPrepCount = window._lastPrepOrderCount || 0;
-        const _prevChatCount = window._lastChatOrderCount || 0;
-        if (!isFirst) {
-            // صوت الطلبات: يُشغَّل فقط عند وصول طلب جديد للتجهيز
-            if (newPrepOrders.length > _prevPrepCount) {
-                if (getSoundEnabled()) sound.play().catch(() => {});
-                showToast('طلب جديد وصل! 🦅');
-                document.getElementById('notif-bell').style.display = 'flex';
-                const bOrders = document.getElementById('badge-orders');
-                if (bOrders && !document.getElementById('tab-orders').classList.contains('active')) {
-                    bOrders.innerText = newPrepOrders.length;
-                    bOrders.style.display = 'flex';
-                }
-            }
-            // صوت التواصل: يُشغَّل فقط عند وصول محادثة جديدة — ممنوع تشغيل صوت الطلبات هنا
-            if (newChatOrders.length > _prevChatCount) {
-                if (getSoundEnabled()) chatSound.play().catch(() => {});
-                showToast('رسالة تواصل جديدة 💬');
-                const bChat = document.getElementById('badge-chat');
-                if (bChat && !document.getElementById('tab-chat').classList.contains('active')) {
-                    bChat.innerText = newChatOrders.length;
-                    bChat.style.display = 'flex';
-                }
-            }
-        }
-        window._lastPrepOrderCount = newPrepOrders.length;
-        window._lastChatOrderCount = newChatOrders.length;
-        // ===== نهاية الفصل بين صوتَي الطلبات والتواصل =====
-        const prepOrders = allOrders.filter(o => o.status !== 'consulting' && o.status !== 'pending_store');
-        const chatOrders = allOrders.filter(o => o.status === 'consulting' || o.status === 'pending_store');
-        if (prepOrders.length === 0 && chatOrders.length === 0) document.getElementById('notif-bell').style.display = 'none';
-        _lastOrderCount = newCount;
-        document.getElementById('stat-active').innerText = prepOrders.length;
-        // شارة تبويب التواصل عند وجود محادثات
-        const badgeChat = document.getElementById('badge-chat');
-        if (badgeChat) {
-            if (chatOrders.length > 0 && !document.getElementById('tab-chat').classList.contains('active')) {
-                badgeChat.innerText = chatOrders.length;
-                badgeChat.style.display = 'flex';
-            } else {
-                badgeChat.style.display = 'none';
-            }
-        }
-        filterAndRenderOrders();
-        // تحديث قائمة الدردشة إذا كانت مفتوحة
-        if (document.getElementById('page-chat').classList.contains('active')) renderChatOrders();
-    }
-
-    // ===== جلب الأرشيف =====
-    async function loadHistory() {
-        if (!currentRes) return;
-        const today = new Date(); today.setHours(0, 0, 0, 0);
-        const { data: all } = await _sb.from('sh_public_orders').select('*')
-            .eq('restaurant_name', currentRes.name)
-            .in('status', ['completed', 'completed_consultation', 'picked'])
-            .order('created_at', { ascending: false })
-            .limit(100);
-        if (all) {
-            historyOrders = all;
-            const todayList = all.filter(o => new Date(o.created_at) >= today);
-            const profit = todayList.reduce((s, o) => s + (Number(o.total) || Number(o.order_price) || 0), 0);
-            document.getElementById('stat-done').innerText   = todayList.length;
-            document.getElementById('stat-profit').innerText = profit > 0 ? profit.toLocaleString() + ' ل.س' : '0';
-            if (document.getElementById('page-archive').classList.contains('active')) renderArchive();
-        }
-    }
-
-    // ===== عرض الطلبات =====
-    function filterAndRenderOrders() {
-        const term = (document.getElementById('orders-search')?.value || '').toLowerCase();
-        // ===== الفصل الكامل: تبويب الطلبات يعرض طلبات المنيو فقط =====
-        // is_consultation=true = تواصل مباشر → ممنوع ظهوره هنا نهائياً
-        // is_consultation=false/null = طلب منيو → يظهر هنا فقط
-        const filtered = allOrders.filter(o => {
-            // استبعاد طلبات التواصل المباشر (is_consultation=true) من خانة الطلبات
-            if (o.is_consultation === true) return false;
-            // استبعاد consulting/pending_store من خانة الطلبات (حالة انتقالية)
-            if (o.status === 'consulting' || o.status === 'pending_store') return false;
-            return (o.customer_name || '').toLowerCase().includes(term) || String(o.id).includes(term);
-        });
-        // ===== نهاية الفصل =====
-        renderOrderCards(filtered);
-    }
-
-    function renderOrderCards(orders) {
-        const list = document.getElementById('orders-list');
-        const used = JSON.parse(localStorage.getItem('sh_used') || '{}');
-        const isU = (id, k) => used[`${id}_${k}`] ? 'sbtn-used' : '';
-        const prepTime = getPrepTime();
-        const prepBadge = prepTime > 0 ? `<div class="oc-prep">⏱️ مدة التجهيز التقريبية: ${prepTime} دقيقة</div>` : '';
-
-        if (!orders || orders.length === 0) {
-            list.innerHTML = '<div class="empty-state"><i class="fas fa-check-circle"></i><p>لا توجد طلبات نشطة الآن</p></div>';
-            return;
-        }
-        list.innerHTML = orders.map(o => {
-            const isChat = (o.status === 'consulting' || o.status === 'pending_store');
-            // ===== عرض الأصناف =====
-            let itemsHtml = '';
-            try {
-                const arr = JSON.parse(o.items || '[]');
-                if (arr.length > 0) itemsHtml = `<div class="oc-items">${arr.map(i => `• ${i.n} — ${(i.p||0).toLocaleString()} ل.س`).join('<br>')}</div>`;
-            } catch(e) {}
-            // ===== شارة الحالة =====
-            const statusMap = {
-                'accepted':    ['📥 استلمنا الطلب', 'sl-accepted'],
-                'preparing':   ['🍳 قيد التجهيز', 'sl-preparing'],
-                'ready':       ['✅ جاهز للاستلام', 'sl-ready'],
-                'picked':      ['🦅 تسليم للمندوب', 'sl-picked'],
-                'consulting':  ['💬 تواصل مباشر', 'sl-chat'],
-                'pending_store':['💬 طلب تواصل', 'sl-chat'],
-                'searching':   ['🔍 بحث عن مندوب', 'sl-accepted'],
-            };
-            const [slabel, sclass] = statusMap[o.status] || ['جديد', 'sl-new'];
-            // ===== أزرار حسب النوع =====
-            let btns = '';
-            if (isChat) {
-                btns = `
-                <button class="sbtn sbtn-chat" onclick="openChatScreen('${o.id}','${escHtml((o.customer_name||'').replace(/'/g,''))}')">
-                    <i class="fas fa-comments"></i> ${o.status==='consulting' ? 'متابعة الدردشة' : 'قبول وبدء التواصل'}
-                </button>
-                <button class="sbtn sbtn-reject" onclick="rejectOrder('${o.id}')"><i class="fas fa-times"></i> رفض الطلب</button>`;
-            } else {
-                btns = `
-                <button class="sbtn sbtn-accept ${isU(o.id,'m1')}"  onclick="updateStatus('${o.id}','accepted','📥 تم استلام طلبك — بدأنا التجهيز ✅','m1')">📥 تم استلام الطلب</button>
-                <button class="sbtn sbtn-prep   ${isU(o.id,'m2')}"  onclick="updateStatus('${o.id}','preparing','🍳 طلبك قيد التجهيز الآن','m2')">🍳 قيد التجهيز</button>
-                <button class="sbtn sbtn-ready  ${isU(o.id,'m3')}"  onclick="updateStatus('${o.id}','ready','✅ طلبك جاهز وبانتظار المندوب 🦅','m3')">✅ تم التجهيز — جاهز</button>
-                <button class="sbtn sbtn-sent   ${isU(o.id,'m4')}"  onclick="updateStatus('${o.id}','picked','🦅 تم تسليم طلبك للمندوب','m4')">🦅 تسليم للمندوب</button>`;
-            }
-            return `
-            <div class="order-card ${isChat ? 'chat-order' : (o.status==='accepted'||o.status==='preparing'||o.status==='ready' ? 'in-progress' : 'new-order')}">
-                <div class="oc-top"><span class="oc-id">#${String(o.id).slice(-6)}</span><span class="oc-time">${new Date(o.created_at).toLocaleTimeString('ar-SY',{hour:'2-digit',minute:'2-digit'})}</span></div>
-                <div class="oc-name">${escHtml(o.customer_name) || 'عميل شاهين'}</div>
-                <span class="status-label ${sclass}">${slabel}</span>
-                ${prepBadge}
-                ${itemsHtml}
-                ${o.total > 0 ? `<div class="oc-total">💰 المجموع: <b>${Number(o.total).toLocaleString()} ل.س</b></div>` : ''}
-                <div class="oc-driver"><i class="fas fa-motorcycle"></i> ${escHtml(o.driver_name) || 'بانتظار صقر الشاهين'}</div>
-                <div class="status-btns">${btns}</div>
-            </div>`;
-        }).join('');
-    }
-
-    // ===== تحديث حالة الطلب مع إشعار =====
-    async function updateStatus(id, status, msg, key) {
-        const used = JSON.parse(localStorage.getItem('sh_used') || '{}');
-        used[`${id}_${key}`] = true;
-        localStorage.setItem('sh_used', JSON.stringify(used));
-        showToast('⏳ جاري التحديث...');
-        await _sb.from('orders').update({ status, restaurant_note: msg }).eq('id', id);
-        await _sb.from('sh_public_orders').update({ status, restaurant_note: msg }).eq('id', id);
-        // إشعار للعميل والمندوب
-        const { data: ord } = await _sb.from('sh_public_orders').select('customer_id, driver_id').eq('id', id).single();
-        if (ord?.customer_id) {
-            await _sb.from('notifications').insert([{
-                user_id: ord.customer_id,
-                message: '🍽️ تحديث طلبك من ' + (currentRes?.name || 'المطعم') + ': ' + msg,
-                type: 'order_status', created_at: new Date().toISOString()
-            }]).catch(() => {});
-        }
-        if (ord?.driver_id) {
-            await _sb.from('notifications').insert([{
-                user_id: ord.driver_id,
-                message: '🍽️ تحديث طلب المطعم: ' + msg,
-                type: 'order_status', created_at: new Date().toISOString()
-            }]).catch(() => {});
-        }
-        showToast('✅ تم التحديث وإرسال الإشعار');
-        loadOrders(false);
-    }
-
-    // ===== رفض طلب =====
-    async function rejectOrder(id) {
-        if (!confirm('رفض هذا الطلب؟')) return;
-        await _sb.from('sh_public_orders').update({ status: 'cancelled', restaurant_note: 'المتجر: اعتذرنا عن استقبال الطلب حالياً' }).eq('id', id);
-        showToast('تم رفض الطلب');
-        loadOrders(false);
-    }
-
-    // ===== عرض قائمة الدردشة =====
-    function renderChatOrders() {
-        // التواصل المباشر يعتمد على is_direct_contact من DB فقط (لا يُعطي المطعم سيطرة محلية)
-        const chatEnabled = currentRes && currentRes.is_direct_contact === true;
-        const notice = document.getElementById('chat-disabled-notice');
-        if (notice) notice.style.display = chatEnabled ? 'none' : 'block';
-        const container = document.getElementById('chat-orders-list');
-        // ===== الفصل الكامل: تبويب التواصل يعرض طلبات التواصل المباشر فقط =====
-        // is_consultation=true = تواصل مباشر → يظهر هنا فقط
-        // is_consultation=false/null = طلب منيو → ممنوع ظهوره هنا نهائياً
-        const chatOrders = allOrders.filter(o => {
-            // طلب التواصل المباشر الصريح بـ is_consultation=true
-            if (o.is_consultation === true) return true;
-            // طلبات consulting/pending_store بدون is_consultation محدد (قديمة)
-            if ((o.status === 'consulting' || o.status === 'pending_store') && o.is_consultation !== false) return true;
-            return false;
-        });
-        // ===== نهاية الفصل =====
-        if (chatOrders.length === 0) {
-            container.innerHTML = '<div class="empty-state"><i class="fas fa-comments"></i><p>لا توجد محادثات نشطة</p></div>';
-            return;
-        }
-        container.innerHTML = chatOrders.map(o => `
-        <div class="chat-list-item" onclick="openChatScreen('${o.id}','${escHtml((o.customer_name||'').replace(/'/g,''))}')">
-            <div>
-                <div class="cli-name">${escHtml(o.customer_name) || 'عميل شاهين'}</div>
-                <div class="cli-sub">#${String(o.id).slice(-6)} · ${new Date(o.created_at).toLocaleTimeString('ar-SY',{hour:'2-digit',minute:'2-digit'})}</div>
-            </div>
-            <span class="cli-badge">${o.status === 'consulting' ? '💬 نشط' : '🔔 جديد'}</span>
-        </div>`).join('');
-    }
-
-    // ===== فتح شاشة الدردشة =====
-    async function openChatScreen(orderId, clientName) {
-        // ===== حماية الفصل: طلبات المنيو (is_consultation=false) لا تُفتح في الدردشة =====
-        const { data: _chkCh } = await _sb.from('sh_public_orders').select('is_consultation').eq('id', orderId).single();
-        if (_chkCh && _chkCh.is_consultation === false) {
-            showToast('⛔ هذا طلب منيو — يظهر في خانة الطلبات وليس التواصل');
-            return;
-        }
-        // ===== نهاية حماية الفصل =====
-        activeOrderId = String(orderId);
-        msgIds.clear();
-        document.getElementById('chat-cname').innerText = clientName || 'عميل شاهين';
-        document.getElementById('chat-oid').innerText   = 'تواصل مباشر #' + String(orderId).slice(-6);
-        document.getElementById('chat-flow').innerHTML  = '';
-        document.getElementById('chat-screen').style.display = 'flex';
-        // تحديث الحالة إلى consulting مع تأكيد أنه تواصل مباشر
-        await _sb.from('sh_public_orders').update({ status: 'consulting', restaurant_note: 'جاري التنسيق مع العميل 💬' }).eq('id', activeOrderId);
-        // جلب الرسائل السابقة
-        const { data: msgs } = await _sb.from('sh_messages').select('*').eq('order_id', activeOrderId).order('created_at', { ascending: true });
-        if (msgs && msgs.length > 0) {
-            msgs.forEach(m => { msgIds.add(m.id); addMsgToUI(m.message, m.sender, m.created_at); });
-        } else {
-            const welcome = 'أهلاً بك! 🌟 نحن هنا لخدمتك. تفضل بتفاصيل طلبك.';
-            addMsgToUI(welcome, 'store', new Date().toISOString());
-            await _sb.from('sh_messages').insert({ order_id: activeOrderId, sender: 'store', message: welcome });
-        }
-        scrollChat();
-        // Realtime
-        if (chatChannel) _sb.removeChannel(chatChannel);
-        chatChannel = _sb.channel('cs_' + activeOrderId)
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sh_messages' }, payload => {
-                const m = payload.new;
-                if (String(m.order_id) !== String(activeOrderId)) return;
-                if (msgIds.has(m.id)) return;
-                msgIds.add(m.id);
-                addMsgToUI(m.message, m.sender, m.created_at);
-                if (m.sender === 'client') { if (getSoundEnabled()) chatSound.play().catch(()=>{}); showToast('رسالة جديدة 💬'); }
-                scrollChat();
-            }).subscribe();
-        // Polling احتياطي
-        if (_msgPollInterval) clearInterval(_msgPollInterval);
-        _msgPollInterval = setInterval(async () => {
-            if (!activeOrderId) { clearInterval(_msgPollInterval); return; }
-            const { data: pm } = await _sb.from('sh_messages').select('*').eq('order_id', activeOrderId).order('created_at', { ascending: true });
-            if (pm) { let hasNew = false; pm.forEach(m => { if (!msgIds.has(m.id)) { msgIds.add(m.id); addMsgToUI(m.message, m.sender, m.created_at); if(m.sender==='client') hasNew=true; } }); if(hasNew){scrollChat();if(getSoundEnabled()) chatSound.play().catch(()=>{});showToast('رسالة جديدة 💬');} }
-        }, 2500);
-        // متابعة حالة الطلب
-        if (statusChannel) _sb.removeChannel(statusChannel);
-        statusChannel = _sb.channel('cst_' + activeOrderId)
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sh_public_orders', filter: 'id=eq.' + activeOrderId }, p => {
-                if (p.new.status === 'cancelled' || p.new.status === 'completed_consultation') closeChat();
-                if (p.new.status === 'searching' && p.new.is_consultation === false) { _archivedOrderIds.add(String(activeOrderId)); closeChat(); showToast('تم إرسال الطلب للمندوب ✅'); }
-            }).subscribe();
-    }
-
-    // ===== إرسال رسالة =====
-    async function sendMsg() {
-        const inp = document.getElementById('chat-input');
-        const text = inp.value.trim();
-        if (!text || !activeOrderId) return;
-        inp.value = ''; inp.disabled = true;
-        addMsgToUI(text, 'store', new Date().toISOString());
-        scrollChat();
-        const _oid = isNaN(activeOrderId) ? activeOrderId : Number(activeOrderId);
-        const { data: saved, error } = await _sb.from('sh_messages').insert({ order_id: _oid, sender: 'store', message: text }).select().single();
-        if (error) showToast('فشل إرسال الرسالة ❌');
-        if (saved) msgIds.add(saved.id);
-        inp.disabled = false; inp.focus();
-    }
-
-    // [SEC-FIX-1] XSS: تم استبدال innerHTML بـ DOM آمن لمنع حقن الكود
-    function escHtml(str) {
-        if (!str) return '';
-        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-    }
-    function addMsgToUI(text, sender, time) {
-        const flow = document.getElementById('chat-flow');
-        const timeStr = time ? new Date(time).toLocaleTimeString('ar-SY', {hour:'2-digit',minute:'2-digit'}) : '';
-        const wrap = document.createElement('div');
-        wrap.className = 'cmsg-wrap ' + (sender === 'store' ? 'store' : 'client');
-        const msgDiv = document.createElement('div');
-        msgDiv.className = 'cmsg ' + (sender === 'store' ? 'store' : 'client');
-        msgDiv.textContent = text; // [SEC-FIX-1] textContent بدلاً من innerHTML
-        const timeDiv = document.createElement('div');
-        timeDiv.className = 'cmsg-time';
-        timeDiv.textContent = timeStr;
-        wrap.appendChild(msgDiv);
-        wrap.appendChild(timeDiv);
-        flow.appendChild(wrap);
-    }
-    function scrollChat() { const f = document.getElementById('chat-flow'); if(f) f.scrollTop = f.scrollHeight; }
-
-    // ===== مودال الفاتورة =====
-    function showInvoiceBox() {
-        document.getElementById('inv-items').value = '';
-        document.getElementById('inv-total').innerText = '0';
-        document.getElementById('invoice-modal').style.display = 'flex';
-    }
-    function calcInvoiceTotal() {
-        const nums = document.getElementById('inv-items').value.match(/\d+/g);
-        const t = nums ? nums.reduce((s,n) => s + parseInt(n), 0) : 0;
-        document.getElementById('inv-total').innerText = t.toLocaleString();
-        return t;
-    }
-    async function sendInvoice() {
-        const details = document.getElementById('inv-items').value.trim();
-        const total   = calcInvoiceTotal();
-        if (!details || total === 0) { showToast('يرجى كتابة الأصناف والأسعار ❌'); return; }
-        const targetId = activeOrderId;
-        const invoice  = '🧾 فاتورة ' + (currentRes?.name||'المطعم') + ':\n──────────\n' + details + '\n──────────\n💰 الإجمالي: ' + total.toLocaleString() + ' ل.س';
-        const { error } = await _sb.from('sh_public_orders').update({
-            order_details: invoice, order_price: total, total: total,
-            restaurant_note: 'INVOICE_SENT:' + total, status: 'store_invoice_sent'
-        }).eq('id', targetId);
-        if (!error) {
-            await _sb.from('sh_messages').insert({ order_id: targetId, sender: 'store', message: invoice });
-            document.getElementById('invoice-modal').style.display = 'none';
-            _archivedOrderIds.add(String(targetId));
-            allOrders = allOrders.filter(o => String(o.id) !== String(targetId));
-            closeChat();
-            showToast('✅ تم إرسال الفاتورة للعميل');
-            loadHistory();
-        } else { showToast('خطأ: ' + error.message); }
-    }
-
-    // ===== إلغاء الطلب =====
-    async function cancelDueToNoResponse() {
-        if (!activeOrderId) return;
-        if (!confirm('هل أنت متأكد من إلغاء هذا الطلب؟')) return;
-        await _sb.from('sh_public_orders').update({ status: 'cancelled', order_details: 'إلغاء من المطعم — عدم رد العميل' }).eq('id', activeOrderId);
-        showToast('تم إلغاء الطلب');
-        closeChat();
-    }
-
-    // ===== إغلاق الدردشة =====
-    function closeChat() {
-        if (chatChannel)    { _sb.removeChannel(chatChannel); chatChannel = null; }
-        if (statusChannel)  { _sb.removeChannel(statusChannel); statusChannel = null; }
-        if (_msgPollInterval) { clearInterval(_msgPollInterval); _msgPollInterval = null; }
-        document.getElementById('chat-screen').style.display = 'none';
-        activeOrderId = null; msgIds.clear();
-        loadOrders();
-    }
-
-    // ===== الأرشيف =====
-    function renderArchive() {
-        const cont = document.getElementById('archive-list');
-        if (!historyOrders || historyOrders.length === 0) {
-            cont.innerHTML = '<div class="empty-state"><i class="fas fa-box-open"></i><p>لا توجد طلبات مكتملة</p></div>';
-            return;
-        }
-        cont.innerHTML = historyOrders.map(o => `
-        <div class="arch-item">
-            <div class="ai-name">${escHtml(o.customer_name) || '---'}</div>
-            <div style="font-size:11px;opacity:0.5;">#${escHtml(String(o.id))} · ${new Date(o.created_at).toLocaleString('ar-SY')}</div>
-            ${o.order_details ? `<div class="ai-detail">${escHtml(o.order_details)}</div>` : ''}
-            ${(o.total||o.order_price) ? `<div style="font-size:12px;color:var(--gold);margin-top:5px;">💰 ${(Number(o.total||0)||Number(o.order_price||0)).toLocaleString()} ل.س</div>` : ''}
-        </div>`).join('');
-    }
-
-    // ===== إدارة المنيو =====
-    let _menuData = [];
-
-    function renderMenuSections() {
-        if (!currentRes) return;
-        // ===== التحقق من صلاحية تعديل المنيو =====
-        const menuEnabled = currentRes.is_menu_enabled === true;
-        const cont = document.getElementById('menu-sections-container');
-        // زر إضافة قسم جديد — يظهر فقط عند التفعيل
-        const addSectionBtn = document.querySelector('#page-menu button[onclick="showAddSectionForm()"]');
-        if (addSectionBtn) {
-            if (!menuEnabled) {
-                addSectionBtn.style.display = 'none';
-            } else {
-                addSectionBtn.style.display = '';
-            }
-        }
-        if (!menuEnabled) {
-            cont.innerHTML = '<div class="empty-state"><i class="fas fa-lock" style="color:var(--danger);font-size:30px;"></i><p style="color:var(--danger); font-size:12px; margin-top:10px;">تعديل المنيو غير مفعّل<br><small style="opacity:0.7;">تواصل مع الإدارة لتفعيل خيار تعديل المنيو</small></p></div>';
-            return;
-        }
-        // ===== نهاية التحقق من صلاحية تعديل المنيو =====
-        _menuData = currentRes.restaurant_menu || [];
-        if (!_menuData || _menuData.length === 0) {
-            cont.innerHTML = '<div class="empty-state"><i class="fas fa-utensils"></i><p>لا توجد أقسام في المنيو بعد<br><small>اضغط "قسم جديد" للبدء</small></p></div>';
-            return;
-        }
-        // دعم الصيغتين القديمة والجديدة
-        const isNew = _menuData.some(m => m.type === 'cat');
-        let html = '';
-        if (isNew) {
-            const cats  = _menuData.filter(m => m.type === 'cat');
-            const items = _menuData.filter(m => m.type === 'item');
-            cats.forEach(cat => {
-                const catItems = items.filter(i => i.cid === cat.id);
-                html += _renderSectionHTML(cat.name, cat.icon || '🍽️', cat.id, catItems);
-            });
-        } else {
-            const groups = {};
-            _menuData.forEach(m => { const k = m.cat || 'القائمة'; if (!groups[k]) groups[k] = []; groups[k].push(m); });
-            Object.keys(groups).forEach(k => { html += _renderSectionHTML(k, '🍽️', k, groups[k]); });
-        }
-        cont.innerHTML = html;
-    }
-
-    function _renderSectionHTML(name, icon, catId, items) {
-        const itemsHTML = items.map((item, idx) => `
-        <div class="menu-item-row">
-            <div>
-                <span>${item.n || item.name}</span>
-                ${item.desc ? `<div style="font-size:10px;opacity:0.55;">${item.desc}</div>` : ''}
-            </div>
-            <div style="display:flex;align-items:center;gap:8px;">
-                <span class="menu-item-price">${(item.p || item.price || 0).toLocaleString()} ل.س</span>
-                <span class="menu-item-avail ${item.available !== false ? 'avail-yes' : 'avail-no'}" onclick="toggleItemAvail('${catId}', ${idx})">${item.available !== false ? '✅' : '❌'}</span>
-                <span onclick="deleteMenuItem('${catId}', ${idx})" style="cursor:pointer;color:var(--danger);font-size:12px;">🗑️</span>
-            </div>
-        </div>`).join('');
-
-        return `
-        <div class="menu-section" id="sec-${catId}">
-            <div class="menu-section-title">
-                <span>${icon} ${name}</span>
-                <button onclick="showAddItemForm('${catId}')" style="background:rgba(212,175,55,0.15);border:1px solid var(--gold);color:var(--gold);padding:4px 12px;border-radius:8px;font-size:11px;cursor:pointer;"><i class="fas fa-plus"></i> صنف</button>
-            </div>
-            ${itemsHTML || '<div style="font-size:11px;opacity:0.4;padding:8px 0;">لا توجد أصناف في هذا القسم</div>'}
-            <div id="add-item-form-${catId}" style="display:none;">
-                <div class="add-item-form">
-                    <input class="fi" id="ni-name-${catId}" placeholder="اسم الصنف" style="margin-bottom:8px;">
-                    <input class="fi" id="ni-price-${catId}" type="number" placeholder="السعر (ل.س)" style="margin-bottom:8px;">
-                    <input class="fi" id="ni-desc-${catId}" placeholder="وصف اختياري" style="margin-bottom:8px;">
-                    <div style="display:flex;gap:8px;">
-                        <button onclick="addMenuItem('${catId}')" class="btn-login" style="flex:1;padding:10px;font-size:12px;"><i class="fas fa-check"></i> إضافة</button>
-                        <button onclick="document.getElementById('add-item-form-${catId}').style.display='none'" style="flex:1;padding:10px;background:rgba(255,255,255,0.07);color:#fff;border:1px solid #555;border-radius:10px;cursor:pointer;font-size:12px;">إلغاء</button>
-                    </div>
-                </div>
-            </div>
+      // ----- بطاقة بالقائمة الجانبية -----
+      const card = document.createElement('div');
+      card.className = 'driver-card' + (selectedDriverId === row.driver_id ? ' selected' : '');
+      card.onclick = () => selectDriver(row.driver_id);
+      card.innerHTML = `
+        <div class="dc-top">
+          <span class="dc-name"><span class="dc-dot" style="background:${statusColor(s)}"></span>${row.driver_name || 'مندوب #' + row.driver_id}</span>
+          <span style="font-size:10px; color:#999;">${timeAgo(row.updated_at)}</span>
+        </div>
+        <div class="dc-meta">
+          <span>${statusLabel(s)}</span>
+          ${row.order_id ? `<span>📦 طلب #${row.order_id}</span>` : '<span>لا يوجد طلب</span>'}
+          ${row.speed ? `<span>${Math.round(row.speed*3.6)} كم/س</span>` : ''}
+          ${row.fake_gps ? '<span style="color:#e74c3c;">⚠️ GPS مشبوه</span>' : ''}
         </div>`;
-    }
+      listEl.appendChild(card);
 
-    function showAddSectionForm() {
-        document.getElementById('add-section-form').style.display = 'block';
-        document.getElementById('new-sec-name').focus();
-    }
-    function showAddItemForm(catId) {
-        document.getElementById('add-item-form-' + catId).style.display = 'block';
-        document.getElementById('ni-name-' + catId).focus();
-    }
+      evaluateAlerts(row, s);
+    });
 
-    async function addMenuSection() {
-        const name = document.getElementById('new-sec-name').value.trim();
-        const icon = document.getElementById('new-sec-icon').value.trim() || '🍽️';
-        if (!name) { showToast('يرجى كتابة اسم القسم'); return; }
-        const newId = 'cat_' + Date.now();
-        const newCat = { type: 'cat', id: newId, name, icon };
-        // تحويل للصيغة الجديدة إذا كان المنيو فارغاً أو قديماً
-        const isNew = _menuData.some(m => m.type === 'cat');
-        if (!isNew) {
-            // تحويل الصيغة القديمة لجديدة
-            const converted = [];
-            const groups = {};
-            _menuData.forEach(m => { const k = m.cat || 'القائمة'; if (!groups[k]) groups[k] = []; groups[k].push(m); });
-            let idx = 0;
-            Object.keys(groups).forEach(k => {
-                const cid = 'cat_legacy_' + idx++;
-                converted.push({ type: 'cat', id: cid, name: k, icon: '🍽️' });
-                groups[k].forEach(m => converted.push({ type: 'item', cid, n: m.n, p: m.p, img: m.img||'', desc: m.desc||'' }));
-            });
-            _menuData = converted;
+    document.getElementById('cnt-moving').innerText = moving;
+    document.getElementById('cnt-stopped').innerText = stopped;
+    document.getElementById('cnt-offline').innerText = offline;
+
+    renderRawTable(rows);
+    if (selectedDriverId && driversData[selectedDriverId]) renderDetail(driversData[selectedDriverId]);
+  }
+
+  function selectDriver(id) {
+    selectedDriverId = id;
+    renderAll();
+    const row = driversData[id];
+    if (row && row.lat && row.lng) map.setView([row.lat, row.lng], 15);
+    renderDetail(row);
+    loadPath(row);
+  }
+
+  function renderDetail(row) {
+    const panel = document.getElementById('detail-panel');
+    if (!row) { panel.style.display = 'none'; return; }
+    panel.style.display = 'block';
+    const s = statusOf(row);
+    panel.innerHTML = `
+      <h4>${row.driver_name || 'مندوب #' + row.driver_id}</h4>
+      <div class="row"><span>الحالة</span><span>${statusLabel(s)}</span></div>
+      <div class="row"><span>الطلب الحالي</span><span>${row.order_id || 'لا يوجد'}</span></div>
+      <div class="row"><span>السرعة</span><span>${Math.round((row.speed||0)*3.6)} كم/س</span></div>
+      <div class="row"><span>دقة GPS</span><span>${Math.round(row.accuracy||0)} م</span></div>
+      <div class="row"><span>البطارية</span><span>${row.battery != null ? row.battery + '%' : '—'}</span></div>
+      <div class="row"><span>وضع التطبيق</span><span>${row.app_state === 'background' ? '🌙 خلفية' : '☀️ مفتوح'}</span></div>
+      <div class="row"><span>آخر تحديث</span><span>${timeAgo(row.updated_at)}</span></div>
+      ${row.fake_gps ? '<div class="row" style="color:#e74c3c;"><span>تنبيه</span><span>⚠️ اشتباه GPS غير حقيقي</span></div>' : ''}
+    `;
+  }
+
+  async function loadPath(row) {
+    if (pathLine) { try { map.removeLayer(pathLine); } catch(e){} pathLine = null; }
+    if (!row || !row.order_id) return;
+    try {
+      const { data, error } = await client.from(PATH_TABLE).select('lat,lng').eq('order_id', String(row.order_id)).order('created_at', { ascending: true });
+      if (error) { console.warn('loadPath error', error); return; }
+      if (data && data.length > 1) {
+        pathLine = L.polyline(data.map(p => [p.lat, p.lng]), { color: '#d4af37', weight: 4, opacity: 0.85 }).addTo(map);
+      }
+    } catch (e) { console.warn(e); }
+  }
+
+  // =====================================================================
+  // التنبيهات الاستباقية
+  // =====================================================================
+  function canFire(driverId, type) {
+    const key = driverId+':'+type, now = Date.now();
+    if (lastAlertAt[key] && now - lastAlertAt[key] < ALERT_COOLDOWN_MS) return false;
+    lastAlertAt[key] = now; return true;
+  }
+  function alertColor(t){ return {offline:'#e74c3c', stopped_too_long:'#e67e22', out_of_zone:'#8e44ad', fake_gps:'#c0392b'}[t]||'#e74c3c'; }
+  function alertIcon(t){ return {offline:'📡', stopped_too_long:'⏸️', out_of_zone:'📍', fake_gps:'⚠️'}[t]||'⚠️'; }
+
+  function fireAlert(row, type, message) {
+    if (!canFire(row.driver_id, type)) return;
+    const host = document.getElementById('alerts-host');
+    const div = document.createElement('div');
+    div.className = 'alert-row';
+    div.style.background = alertColor(type); div.style.color = '#fff';
+    div.innerHTML = `<span>${alertIcon(type)} ${message}</span><span onclick="this.parentElement.remove()" style="cursor:pointer;">✕</span>`;
+    host.insertBefore(div, host.firstChild);
+    while (host.children.length > 12) host.removeChild(host.lastChild);
+    try { client.from(ALERTS_TABLE).insert({ driver_id: row.driver_id, driver_name: row.driver_name, order_id: row.order_id, alert_type: type, message }); } catch(e){}
+  }
+
+  function evaluateAlerts(row, s) {
+    if (s === 'offline' && row.status === 'online') {
+      const gapSec = row.updated_at ? (Date.now() - new Date(row.updated_at).getTime())/1000 : 9999;
+      fireAlert(row, 'offline', `${row.driver_name}: لا تحديث موقع منذ ${Math.round(gapSec)} ثانية`);
+    }
+    if (row.order_id && row.is_moving === false && row.stopped_since) {
+      const stoppedMin = (Date.now() - new Date(row.stopped_since).getTime())/60000;
+      if (stoppedMin >= STOPPED_MIN) fireAlert(row, 'stopped_too_long', `${row.driver_name}: متوقف منذ ${Math.round(stoppedMin)} دقيقة على طلب نشط`);
+    }
+    if (row.lat && row.lng && row.status === 'online' && km(row.lat,row.lng,ZONE.lat,ZONE.lng) > ZONE.radiusKm) {
+      fireAlert(row, 'out_of_zone', `${row.driver_name}: خارج نطاق العمل (${ZONE.name})`);
+    }
+    if (row.fake_gps) fireAlert(row, 'fake_gps', `${row.driver_name}: اشتباه GPS غير حقيقي`);
+  }
+
+  // =====================================================================
+  // جدول البيانات الخام (تشخيص مباشر)
+  // =====================================================================
+  function toggleRaw() {
+    const el = document.getElementById('raw-table-wrap');
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  }
+  function renderRawTable(rows) {
+    const wrap = document.getElementById('raw-table-wrap');
+    if (!rows.length) { wrap.innerHTML = '<p style="color:#888; text-align:center;">الجدول tracking_live فاضي تماماً حالياً.</p>'; return; }
+    let html = '<table><tr><th>المندوب</th><th>الحالة</th><th>lat</th><th>lng</th><th>آخر تحديث</th><th>طلب</th></tr>';
+    rows.forEach(r => {
+      html += `<tr><td>${r.driver_name||r.driver_id}</td><td>${r.status}</td><td>${r.lat||'—'}</td><td>${r.lng||'—'}</td><td>${r.updated_at||'—'}</td><td>${r.order_id||'—'}</td></tr>`;
+    });
+    html += '</table>';
+    wrap.innerHTML = html;
+  }
+
+  // =====================================================================
+  // التحميل + Realtime + احتياط Polling
+  // =====================================================================
+  async function fetchAll() {
+    try {
+      const { data, error } = await client.from(LIVE_TABLE).select('*');
+      if (error) {
+        setConnStatus(false, 'خطأ بقاعدة البيانات: ' + error.message);
+        console.error('Supabase error:', error);
+        return;
+      }
+      setConnStatus(true, 'متصل ✅ (' + (data?.length||0) + ' مندوب بالجدول)');
+      driversData = {};
+      (data || []).forEach(r => driversData[r.driver_id] = r);
+      renderAll();
+    } catch (e) {
+      setConnStatus(false, 'فشل الاتصال: ' + e.message);
+      console.error(e);
+    }
+  }
+
+  function manualRefresh() { fetchAll(); }
+
+  function startRealtime() {
+    client.channel('standalone-tracking-dashboard')
+      .on('postgres_changes', { event: '*', schema: 'public', table: LIVE_TABLE }, payload => {
+        if (payload.eventType === 'DELETE') {
+          delete driversData[payload.old.driver_id];
+          if (markers[payload.old.driver_id]) { map.removeLayer(markers[payload.old.driver_id]); delete markers[payload.old.driver_id]; }
+        } else {
+          driversData[payload.new.driver_id] = payload.new;
         }
-        _menuData.push(newCat);
-        await saveMenu();
-        document.getElementById('new-sec-name').value = '';
-        document.getElementById('add-section-form').style.display = 'none';
-        renderMenuSections();
-    }
+        renderAll();
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIPTION_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          setConnStatus(false, 'انقطع الاتصال اللحظي Realtime — يعمل بالتحديث الدوري فقط');
+        }
+      });
+  }
 
-    async function addMenuItem(catId) {
-        const name  = document.getElementById('ni-name-' + catId).value.trim();
-        const price = parseFloat(document.getElementById('ni-price-' + catId).value) || 0;
-        const desc  = document.getElementById('ni-desc-' + catId).value.trim();
-        if (!name) { showToast('يرجى كتابة اسم الصنف'); return; }
-        _menuData.push({ type: 'item', cid: catId, n: name, p: price, desc, img: '', available: true });
-        await saveMenu();
-        document.getElementById('add-item-form-' + catId).style.display = 'none';
-        renderMenuSections();
-    }
-
-    async function toggleItemAvail(catId, idx) {
-        const items = _menuData.filter(m => m.type === 'item' && m.cid === catId);
-        const item = items[idx];
-        if (!item) return;
-        const globalIdx = _menuData.indexOf(item);
-        if (globalIdx < 0) return;
-        _menuData[globalIdx].available = !(_menuData[globalIdx].available !== false);
-        await saveMenu();
-        renderMenuSections();
-    }
-
-    async function deleteMenuItem(catId, idx) {
-        if (!confirm('حذف هذا الصنف؟')) return;
-        const items = _menuData.filter(m => m.type === 'item' && m.cid === catId);
-        const item = items[idx];
-        if (!item) return;
-        _menuData = _menuData.filter(m => m !== item);
-        await saveMenu();
-        renderMenuSections();
-    }
-
-    async function saveMenu() {
-        if (!currentRes) return;
-        const { error } = await _sb.from('restaurants').update({ restaurant_menu: _menuData }).eq('id', currentRes.id);
-        if (!error) {
-            currentRes.restaurant_menu = _menuData;
-            localStorage.setItem('sh_store_session', JSON.stringify(currentRes));
-            showToast('✅ تم حفظ المنيو');
-        } else { showToast('خطأ في الحفظ: ' + error.message); }
-    }
-
-    // ===== إعدادات =====
-    // (يتم حفظها محلياً في الجهاز — التغيير الدائم من الإدارة)
-
-    // ===== Toast =====
-    function showToast(m) {
-        const t = document.getElementById('toast');
-        t.innerText = m; t.style.display = 'block';
-        setTimeout(() => t.style.display = 'none', 3000);
-    }
-
-    function logout() {
-        // [FIX-LOGOUT-39] إيقاف المؤقت عند تسجيل الخروج
-        if (window._mainRefreshInterval39) { clearInterval(window._mainRefreshInterval39); window._mainRefreshInterval39 = null; }
-        if (_msgPollInterval) { clearInterval(_msgPollInterval); _msgPollInterval = null; }
-        localStorage.removeItem('sh_store_session');
-        location.reload();
-    }
-
-    window.onload = () => {
-        const s = localStorage.getItem('sh_store_session');
-        if (s) { currentRes = JSON.parse(s); startApp(); }
-    };
+  initMap();
+  fetchAll();
+  startRealtime();
+  setInterval(fetchAll, 10000); // احتياط دائم كل 10 ثوان حتى لو Realtime متعطّل
 </script>
 </body>
 </html>
